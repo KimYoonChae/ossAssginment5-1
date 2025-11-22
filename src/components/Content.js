@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import "./Content.css";
+import Modal from "./Modal";
 
 const API_BASE_URL = 'https://6915406484e8bd126af93a94.mockapi.io/books';
 
@@ -9,6 +10,7 @@ export default function Content(){
     const [error, setError] = useState(null);
     const [currentFilter, setCurrentFilter] = useState('all');
     const [currentSort, setCurrentSort] = useState('id');
+    const [editingBook, setEditingBook] = useState(null);
 
     const fetchBooks = async () => {
         setIsLoading(true);
@@ -22,6 +24,41 @@ export default function Content(){
             setError(err.message);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleSaveBook = async (bookToSave) => {
+        const { id, ...payload } = bookToSave;
+        payload.rating = Number(payload.rating);
+
+        const method = id ? 'PUT' : 'POST';
+        const url = id ? `${API_BASE_URL}/${id}` : API_BASE_URL;
+        try {
+            const response = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) throw new Error(id ? '수정 실패' : '등록 실패');
+            
+            await fetchBooks(); 
+        } catch (err) {
+            setError(err.message); 
+        } finally {
+            setEditingBook(null);
+        }
+    };
+
+    const handleDeleteBook = async (bookToDelete) => {
+        if (!window.confirm(`'${bookToDelete.title}'을(를) 정말 삭제하시겠습니까?`)) {
+            return;
+        }
+        try {
+            const response = await fetch(`${API_BASE_URL}/${bookToDelete.id}`, { method: 'DELETE' });
+            if (!response.ok) throw new Error('삭제 실패');
+            await fetchBooks(); // 목록 새로고침
+        } catch (err) {
+            setError(err.message);
         }
     };
 
@@ -39,8 +76,7 @@ export default function Content(){
         const statusMap = {
             '읽음': 'bg-primary',
             '읽는 중': 'bg-info',
-            '읽을 예정': 'bg-warning text-dark',
-            '보관 중': 'bg-secondary'
+            '읽을 예정': 'bg-warning text-dark'
         };
         return statusMap[status] || 'bg-secondary';
     };
@@ -49,8 +85,7 @@ export default function Content(){
         all: allBooks.length,
         '읽는 중': allBooks.filter(b => b.status === '읽는 중').length,
         '읽을 예정': allBooks.filter(b => b.status === '읽을 예정').length,
-        '읽음': allBooks.filter(b => b.status === '읽음').length,
-        '보관 중': allBooks.filter(b => b.status === '보관 중').length,
+        '읽음': allBooks.filter(b => b.status === '읽음').length
     }), [allBooks]);
 
     const displayedBooks = useMemo(() => {
@@ -72,7 +107,11 @@ export default function Content(){
         }
     }, [allBooks, currentFilter, currentSort]);
 
-    const filterOptions = ['all', '읽는 중', '읽을 예정', '읽음', '보관 중'];
+    const filterOptions = ['all', '읽는 중', '읽을 예정', '읽음'];
+
+    const handleEditClick = (book) => {
+        setEditingBook(book);
+    };
 
     return( 
     <div className="card">
@@ -97,7 +136,12 @@ export default function Content(){
                 <option value="rating-asc">평점 낮은 순</option>
                 <option value="title">제목 순</option>
               </select>
-              <button className="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#book-modal">
+              <button 
+                className="btn btn-primary btn-sm" 
+                data-bs-toggle="modal" 
+                data-bs-target="#book-modal"
+                onClick={() => handleEditClick(null)} // 새 도서 등록 시 editingBook을 null로 설정
+              >
                 + 새 도서
               </button>
               <button className="btn btn-outline-secondary btn-sm" onClick={fetchBooks}>
@@ -139,8 +183,17 @@ export default function Content(){
                             <td><span className={`badge ${getStatusBadgeClass(book.status)}`}>{book.status}</span></td>
                             <td><span className={`badge ${getBadgeClass(book.rating)}`}>{book.rating || 0}</span></td>
                             <td className="text-end">
-                                <button className="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#book-modal">수정</button>
-                                <button className="btn btn-sm btn-outline-danger ms-1">삭제</button>
+                                <button 
+                                    className="btn btn-sm btn-outline-primary" 
+                                    data-bs-toggle="modal" 
+                                    data-bs-target="#book-modal"
+                                    onClick={() => handleEditClick(book)}
+                                >
+                                    수정
+                                </button>
+                                <button className="btn btn-sm btn-outline-danger ms-1" onClick={() => handleDeleteBook(book)}>
+                                    삭제
+                                </button>
                             </td>
                         </tr>
                     ))
@@ -149,6 +202,7 @@ export default function Content(){
           </table>
         </div>
       </div>
+      <Modal book={editingBook} onSave={handleSaveBook} onClose={() => setEditingBook(null)} />
     </div>
     );
 }
